@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Lowest Unique Bid</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  body{font-family:-apple-system,system-ui,sans-serif;margin:0;padding:20px;background:var(--tg-theme-bg-color,#fff);color:var(--tg-theme-text-color,#111)}
+  h1{font-size:20px;margin:0 0 4px}
+  .sub{color:var(--tg-theme-hint-color,#777);font-size:14px;margin-bottom:20px}
+  input{width:100%;box-sizing:border-box;padding:14px;font-size:18px;border-radius:10px;border:1px solid #8884;background:var(--tg-theme-secondary-bg-color,#f3f3f3);color:inherit}
+  button{width:100%;margin-top:14px;padding:14px;font-size:16px;font-weight:600;border:0;border-radius:10px;background:var(--tg-theme-button-color,#2481cc);color:var(--tg-theme-button-text-color,#fff)}
+  button:disabled{opacity:.5}
+  #msg{margin-top:16px;padding:12px;border-radius:10px;display:none;font-size:14px}
+  .ok{background:#2ecc7122;color:#1e8449}.err{background:#e74c3c22;color:#c0392b}
+</style>
+</head>
+<body>
+<h1 id="title">Loading…</h1>
+<div class="sub" id="deadline"></div>
+<input id="amount" type="number" inputmode="decimal" step="0.01" min="0.01" placeholder="Your bid, e.g. 0.75">
+<button id="submit" disabled>Place Bid</button>
+<div id="msg"></div>
+<script>
+const tg = window.Telegram.WebApp;
+tg.ready(); tg.expand();
+const itemId = new URLSearchParams(location.search).get("item_id");
+const $ = id => document.getElementById(id);
+
+function show(text, ok){ const m=$("msg"); m.textContent=text; m.className=ok?"ok":"err"; m.style.display="block"; }
+
+async function loadItem(){
+  if(!itemId){ $("title").textContent="No auction selected"; return; }
+  try{
+    const r = await fetch(`/api/items/${itemId}`);
+    if(!r.ok) throw new Error((await r.json()).detail || "Not found");
+    const item = await r.json();
+    $("title").textContent = item.title;
+    $("deadline").textContent = "Closes: " + new Date(item.deadline).toLocaleString();
+    $("submit").disabled = item.status !== "active";
+    if(item.status !== "active") show("This auction has ended.", false);
+  }catch(e){ $("title").textContent="Error"; show(e.message,false); }
+}
+
+$("submit").addEventListener("click", async () => {
+  const amount = $("amount").value;
+  if(!amount || Number(amount) <= 0){ show("Enter a valid amount.", false); return; }
+  $("submit").disabled = true;
+  try{
+    const r = await fetch("/api/bids", {
+      method:"POST",
+      headers:{"Content-Type":"application/json","X-Telegram-Init-Data":tg.initData},
+      body: JSON.stringify({item_id:itemId, bid_amount:amount})
+    });
+    const data = await r.json();
+    if(!r.ok) throw new Error(typeof data.detail==="string" ? data.detail : "Invalid bid");
+    show(data.message, true);
+    tg.HapticFeedback && tg.HapticFeedback.notificationOccurred("success");
+  }catch(e){ show(e.message,false); }
+  finally{ $("submit").disabled = false; }
+});
+loadItem();
+</script>
+</body>
+</html>
